@@ -12,7 +12,7 @@ analysis: ## Run code analysis.
 	@uv sync
 	@uv run ct/A62.py
 	@uv run ct/A63.py
-	# @uv run ct/A64.py
+	@uv run ct/A64.py
 
 .PHONY: check
 check: ## Run code quality tools.
