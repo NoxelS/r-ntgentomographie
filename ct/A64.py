@@ -142,7 +142,7 @@ def A64Analysis():
 
     # add a single colorbar for all image axes (pad adjusts distance from subplots)
     if im is not None:
-        cbar = fig.colorbar(im, ax=img_axes, shrink=0.6, pad=0.02)
+        cbar = fig.colorbar(im, ax=img_axes, shrink=0.6, pad=0.02, label="Relative Intensität")
 
     # After any layout changes (like colorbar), force each trace axis to match the image axis width
     # and sit immediately beneath it. We compute the trace height relative to the image axis
