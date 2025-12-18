@@ -202,7 +202,7 @@ def A64Analysis():
     ax.set_yticklabels(range(1, nrows + 1))
     ax.set_xlabel("Spalte")
     ax.set_ylabel("Zeile")
-    ax.set_title("Ballpositionen", fontsize=10)
+    ax.set_title("Kugelpositionen", fontsize=10)
     plt.tight_layout()
     fig.savefig("results/A64_ball_positions.pdf", bbox_inches="tight")
     plt.close(fig)
