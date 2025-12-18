@@ -67,12 +67,12 @@ def A63Analysis():
         "rekalibriertkeile": "Keile im CT",
     }
 
-    rowAccumulatedIntensitySeries1 = {
+    graphiteData = {
         "Ohne Cu-Filter": [],
         "Mit Cu-Filter": []
     }
 
-    rowAccumulatedIntensitySeries2 = {
+    aluminiumData = {
         "Ohne Cu-Filter": [],
         "Mit Cu-Filter": []
     }
@@ -117,9 +117,9 @@ def A63Analysis():
             ROIy2 - ROIy1,
             fill=False,
             edgecolor="orange",
-            linewidth=1.5,
+            linewidth=1,
             linestyle="--",
-            label="ROI-Band"
+            label="ROI Graphit"
         )
         ax_img.add_patch(rect1)
 
@@ -131,19 +131,12 @@ def A63Analysis():
             x2_hi - x2_lo,
             ROIy2 - ROIy1,
             fill=False,
-            edgecolor="orange",
-            linewidth=1.5,
-            linestyle="--"
+            edgecolor="cyan",
+            linewidth=1,
+            linestyle="--",
+            label="ROI Aluminium"
         )
         ax_img.add_patch(rect2)
-
-        # Also outline the full ROI x-ranges for context (optional, thin)
-        rect_full1 = Rectangle((ROIx1, ROIy1), ROIx2 - ROIx1, ROIy2 - ROIy1,
-                               fill=False, edgecolor="red", linewidth=1.0, linestyle=":")
-        rect_full2 = Rectangle((ROIx3, ROIy1), ROIx4 - ROIx3, ROIy2 - ROIy1,
-                               fill=False, edgecolor="red", linewidth=1.0, linestyle=":")
-        ax_img.add_patch(rect_full1)
-        ax_img.add_patch(rect_full2)
 
         # Keep image axes visible and readable
         ax_img.set_xlabel("$x$ (Pixel)")
@@ -173,12 +166,12 @@ def A63Analysis():
 
         # Accumulate intensity profiles for later
         if dataset.filter:
-            rowAccumulatedIntensitySeries1["Mit Cu-Filter"].append(intensity_profile_roi1)
-            rowAccumulatedIntensitySeries2["Mit Cu-Filter"].append(intensity_profile_roi2)
+            graphiteData["Mit Cu-Filter"].append(intensity_profile_roi1)
+            aluminiumData["Mit Cu-Filter"].append(intensity_profile_roi2)
         else:
             if "rekalibriert" in dataset.series_name.lower():
-                rowAccumulatedIntensitySeries1["Ohne Cu-Filter"].append(intensity_profile_roi1)
-                rowAccumulatedIntensitySeries2["Ohne Cu-Filter"].append(intensity_profile_roi2)
+                graphiteData["Ohne Cu-Filter"].append(intensity_profile_roi1)
+                aluminiumData["Ohne Cu-Filter"].append(intensity_profile_roi2)
             else:
                 # As instructed we ignore uncalibrated series for the accumulated profiles
                 pass
@@ -205,7 +198,7 @@ def A63Analysis():
         gridspec_kw={"wspace": 0.0, "left": 0.03, "right": 0.98}
     )
     names = ["Graphit", "Aluminium"]
-    all_series = [rowAccumulatedIntensitySeries1, rowAccumulatedIntensitySeries2]
+    all_series = [graphiteData, aluminiumData]
 
     # Wedge dimensions (a, b, h) in mm
     wedge_dims_mm = np.array([
