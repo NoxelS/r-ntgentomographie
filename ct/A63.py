@@ -56,11 +56,11 @@ def A63Analysis():
     # Ensure results dir exists
     Path("results").mkdir(parents=True, exist_ok=True)
 
-    # Create a 2x3 grid: top row images, bottom row intensity profiles
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    # Create a 2x2 grid: top row images, bottom row intensity profiles
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10), sharex=False, sharey=False)
 
-    # Remove padding between subplots
-    # fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    # Remove series that is not calibrated
+    series = [s for s in series if s.series_name != "unkalibriert"]
 
     seriesNameMap = {
         "keile": "Keile im CT",
@@ -90,44 +90,60 @@ def A63Analysis():
         ax_img.set_title(seriesNameMap.get(dataset.series_name.lower(), dataset.series_name) +
                          " (" + ("Mit Cu-Filter" if dataset.filter else "Ohne Cu-Filter") + ")")
 
-        # Compute intensity profile (sum across columns -> one value per row)
-        intensity_profile_y = np.sum(data, axis=1)  # length == height
-        intensity_profile_x = np.sum(data, axis=0)  # length == width
-        rows = np.arange(intensity_profile_y.size)
-        cols = np.arange(intensity_profile_x.size)
+        # Turn off the corresponding bottom axis (we're overlaying directly on the image)
+        ax_prof.axis("off")
 
-        # Avoid division by zero when normalizing
-        intensity_max_y = float(np.max(intensity_profile_y))
-        if intensity_max_y <= 0:
-            intensity_max_y = 1.0
-
-        intensity_max_x = float(np.max(intensity_profile_x))
-        if intensity_max_x <= 0:
-            intensity_max_x = 1.0
-
-        # Map intensity values to image x coordinates (0..width)
-        x_mapped = intensity_profile_y / intensity_max_y * (width * 0.95)
-        y_mapped = intensity_profile_x / intensity_max_x * (height * 0.95)
-
-        # Plot the profile on top of the image (x: mapped intensity, y: row index)
-        ax_img.plot(x_mapped, rows, color="red", alpha=0.5, solid_capstyle="butt", linewidth=1.5, label="CIP (row)")
-        ax_img.plot(cols, y_mapped, color="orange", alpha=0.5, solid_capstyle="butt", linewidth=1.5, label="CIP (column)")
-
-        # Horizontal lines indicating the ROI rows (rows ~ 800 and 1800)
+        # Horizontal and vertical ROI definitions
         ROIy1 = 790
         ROIy2 = 1900
-        ax_img.axhline(ROIy1, color="red", linestyle="--", linewidth=1)
-        ax_img.axhline(ROIy2, color="red", linestyle="--", linewidth=1)
-
-        # Vertical lines indicating the ROI columns (columns ~ 200 to 300 and 700 to 800)
         ROIx1 = 1075
         ROIx2 = 1175
         ROIxCross1 = (ROIx1 + ROIx2) // 2
         ROIx3 = 1450
         ROIx4 = 1550
         ROIxCross2 = (ROIx3 + ROIx4) // 2
-        ax_img.axvline(ROIxCross1, color="orange", linestyle="--", linewidth=1)
-        ax_img.axvline(ROIxCross2, color="orange", linestyle="--", linewidth=1)
+
+        from matplotlib.patches import Rectangle
+
+        # Visualize the ROI band used for averaging (±50 px around ROI center)
+        band_half_width = 50
+
+        # Rectangle for ROI band 1
+        x1_lo = max(0, ROIxCross1 - band_half_width)
+        x1_hi = min(width, ROIxCross1 + band_half_width + 1)
+        rect1 = Rectangle(
+            (x1_lo, ROIy1),
+            x1_hi - x1_lo,
+            ROIy2 - ROIy1,
+            fill=False,
+            edgecolor="orange",
+            linewidth=1.5,
+            linestyle="--",
+            label="ROI-Band"
+        )
+        ax_img.add_patch(rect1)
+
+        # Rectangle for ROI band 2
+        x2_lo = max(0, ROIxCross2 - band_half_width)
+        x2_hi = min(width, ROIxCross2 + band_half_width + 1)
+        rect2 = Rectangle(
+            (x2_lo, ROIy1),
+            x2_hi - x2_lo,
+            ROIy2 - ROIy1,
+            fill=False,
+            edgecolor="orange",
+            linewidth=1.5,
+            linestyle="--"
+        )
+        ax_img.add_patch(rect2)
+
+        # Also outline the full ROI x-ranges for context (optional, thin)
+        rect_full1 = Rectangle((ROIx1, ROIy1), ROIx2 - ROIx1, ROIy2 - ROIy1,
+                               fill=False, edgecolor="red", linewidth=1.0, linestyle=":")
+        rect_full2 = Rectangle((ROIx3, ROIy1), ROIx4 - ROIx3, ROIy2 - ROIy1,
+                               fill=False, edgecolor="red", linewidth=1.0, linestyle=":")
+        ax_img.add_patch(rect_full1)
+        ax_img.add_patch(rect_full2)
 
         # Keep image axes visible and readable
         ax_img.set_xlabel("$x$ (Pixel)")
@@ -135,41 +151,24 @@ def A63Analysis():
         ax_img.set_xlim(0, width)
         ax_img.set_ylim(height, 0)  # keep origin='upper' behaviour for tick labels
 
-        # Add a secondary X axis on top showing the actual intensity units
-        # Map image x (0..width) <-> intensity (0..intensity_max)
-        def imgx_to_intensity(x):
-            return x / (width * 0.95) * intensity_max_y
+        # Add legend for ROI band
+        ax_img.legend(loc="upper right", fontsize="small")
 
-        def intensity_to_imgx(x):
-            return x / intensity_max_y * (width * 0.95)
-
-        secax = ax_img.secondary_xaxis("top", functions=(imgx_to_intensity, intensity_to_imgx))
-        secax.set_xlabel("Summierte Relative Zeilenintensität")
-
-        secaxy = ax_img.secondary_yaxis("right", functions=(imgx_to_intensity, intensity_to_imgx))
-        secaxy.set_ylabel("Summierte Relative Spaltenintensität")
-
-        # Disable ticks on secondary axes
-        # Remove all tick locations and labels on the secondary axes (top and right)
-        secax.set_xticks([])
-        secax.set_xticklabels([])
-        secax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False, labeltop=False)
-
-        secaxy.set_yticks([])
-        secaxy.set_yticklabels([])
-        secaxy.tick_params(axis='y', which='both', left=False, right=False, labelleft=False, labelright=False)
-
-        # Optional legend on the image
-        ax_img.legend(loc="lower right", fontsize="small")
-
-        # Turn off the corresponding bottom axis (we're overlaying on the image)
-        ax_prof.axis("off")
-
-        # Calculate the intensities along the ROI cross sections (so in the x1-x2/2 and x3-x4/2 columns)
+        # Calculate the intensities along the ROI cross sections.
+        # Instead of a single column, average over a ±50 px band around the ROI center
+        # to reduce noise and pixel-level artifacts.
         roi_center_x1 = (ROIx1 + ROIx2) // 2
         roi_center_x2 = (ROIx3 + ROIx4) // 2
-        intensity_profile_roi1 = data[ROIy1:ROIy2, roi_center_x1]
-        intensity_profile_roi2 = data[ROIy1:ROIy2, roi_center_x2]
+
+        band_half_width = 50
+        x1_lo = max(0, roi_center_x1 - band_half_width)
+        x1_hi = min(width, roi_center_x1 + band_half_width + 1)
+        x2_lo = max(0, roi_center_x2 - band_half_width)
+        x2_hi = min(width, roi_center_x2 + band_half_width + 1)
+
+        # Mean over columns within the band -> one value per row
+        intensity_profile_roi1 = np.mean(data[ROIy1:ROIy2, x1_lo:x1_hi], axis=1)
+        intensity_profile_roi2 = np.mean(data[ROIy1:ROIy2, x2_lo:x2_hi], axis=1)
 
 
         # Accumulate intensity profiles for later
@@ -194,7 +193,7 @@ def A63Analysis():
             ax.grid(False)
 
     fig.savefig("results/A63_intensity_profiles.pdf", bbox_inches=
-        Bbox.from_bounds(0, 4, 15, 6)
+        Bbox.from_bounds(0, 4, 10, 6)
     , pad_inches=0.02)
 
     # Plot the two accumulated ROI series side-by-side
@@ -206,12 +205,9 @@ def A63Analysis():
         gridspec_kw={"wspace": 0.0, "left": 0.03, "right": 0.98}
     )
     names = ["Graphit", "Aluminium"]
-    rois = [[1075, 1175], [1450, 1550]]
     all_series = [rowAccumulatedIntensitySeries1, rowAccumulatedIntensitySeries2]
 
-    # Wedge dimensions (a, b, h) in mm for V = 1/2 * a * b * h (triangular prism)
-    # Graphit: 50 mm x 50 mm base, height 10 mm
-    # Aluminium: 49.5 mm x 29.5 mm base, height 10 mm
+    # Wedge dimensions (a, b, h) in mm
     wedge_dims_mm = np.array([
         [50.0, 50.0, 10.0],
         [49.5, 29.5, 10.0],
@@ -264,9 +260,8 @@ def A63Analysis():
         mass = [20.178 * u.g, 21.410 * u.g][i]
         a_dim, b_dim, h_dim = (wedge_dims_mm[i] * u.mm)
 
-        roi = 790, 1900
         ax.set_title(f"1D-Intensitätsprofil ({names[i]})")
-        ax.set_xlabel("Relative Keildick (cm)")
+        ax.set_xlabel("Relative Keildicke (cm)")
         if i == 0:
             ax.set_ylabel("Relative Intensität")
 
@@ -341,7 +336,7 @@ def A63Analysis():
         a_dim, b_dim, h_dim = (wedge_dims_mm[i] * u.mm)
 
         ax_single.set_title(f"1D-Intensitätsprofil ({names[i]})")
-        ax_single.set_xlabel("$Keildicke$ (cm)")
+        ax_single.set_xlabel("$Relative Keildicke$ (cm)")
         if i == 0:
             ax_single.set_ylabel("Relative Intensität")
 
