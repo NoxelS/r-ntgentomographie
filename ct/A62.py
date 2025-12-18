@@ -274,14 +274,14 @@ def A62Analysis():
     )
 
     table.auto_set_font_size(False)
-    table.set_fontsize(10)
+    table.set_fontsize(9.5)
     table.scale(1, 2.5)
     plt.tight_layout()
 
     # Remove padding of table
     plt.subplots_adjust(left=0.1, right=0.9, top=0.8, bottom=0.2)
 
-    plt.title("A6.2: Fitparameter (primär ohne Bias, mit Bias nur Diagnose)")
+    plt.title("A6.2: Fitparameter")
     plt.savefig("results/A62_regression_results.pdf")
 
 
