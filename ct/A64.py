@@ -6,7 +6,6 @@ import numpy as np
 from ct.data import load_A64
 from ct.plot_config import set_plot_config
 
-
 # Set plot config
 set_plot_config(
     [

@@ -29,27 +29,14 @@ set_plot_config(
 
 
 def _linear_with_bias(x, a, b):
-    """Linear model with intercept.
-
-    Note: kept only for diagnostic comparison. Supervisor requested Kramers fits without bias.
-    """
     return a * x + b
 
 
 def _linear_no_bias(x, a):
-    """Linear model through the origin.
-
-    Supervisor request (A6.1/A6.2 Kramers): perform fits without bias / without intercept.
-    """
     return a * x
 
 
 def fit_linear_models(x, y, yerr=None):
-    """Fit both (i) with bias and (ii) without bias.
-
-    Primary result is the no-bias fit; biased fit is reported only as diagnostic.
-    Returns parameters and 1-sigma uncertainties.
-    """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
 
@@ -154,9 +141,6 @@ def A62Analysis():
 
         measurement_series[series_name].append((dataset, J, err_J, mean, std))
 
-    # Supervisor request: do not aggregate all series into one overloaded plot.
-    # Produce separate plots per series and use a fit without bias (intercept fixed to 0) as primary result.
-
     regression_results = []
 
     max_J_value = max(
@@ -177,7 +161,6 @@ def A62Analysis():
         Is_err = np.array([item[4] for item in series], dtype=float)
 
         # Fit: primary without bias; biased fit only for diagnostic comparison.
-        # Supervisor request: primary fit without bias (intercept fixed to 0); keep biased fit only for diagnostic comparison.
         fit = fit_linear_models(Js, Is, yerr=Is_err)
 
         # Store results (both variants) for the summary table
