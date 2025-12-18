@@ -289,7 +289,7 @@ def A63Analysis():
             if names[i] == "Graphit":
                 Dmax = 5.0  # cm (50 mm depth -> thickness range)
             elif names[i] == "Aluminium":
-                Dmax = 2.5  # cm (25 mm depth -> thickness range)
+                Dmax = 2.95  # cm (29.5 mm depth -> thickness range)
             else:
                 raise ValueError("Unknown material for thickness conversion")
 
