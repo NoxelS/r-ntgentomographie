@@ -3,11 +3,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as u
+from astropy.units.quantity import Quantity
 from matplotlib.transforms import Bbox
 
 from ct.data import load_A63
 from ct.plot_config import set_plot_config
-from astropy.units.quantity import Quantity
 
 
 def format_uncertainty(value: Quantity, err: Quantity, sig=2):
@@ -42,22 +42,6 @@ set_plot_config(
         "ggplot",
         "grayscale",
         "petroff10",
-        "seaborn-v0_8",
-        "seaborn-v0_8-bright",
-        "seaborn-v0_8-colorblind",
-        "seaborn-v0_8-dark",
-        "seaborn-v0_8-dark-palette",
-        "seaborn-v0_8-darkgrid",
-        "seaborn-v0_8-deep",
-        "seaborn-v0_8-muted",
-        "seaborn-v0_8-notebook",
-        "seaborn-v0_8-paper",
-        "seaborn-v0_8-pastel",
-        "seaborn-v0_8-poster",
-        "seaborn-v0_8-talk",
-        "seaborn-v0_8-ticks",
-        "seaborn-v0_8-white",
-        "seaborn-v0_8-whitegrid",
         "tableau-colorblind10",
     ][7]
 )
@@ -80,18 +64,16 @@ def A63Analysis():
 
     seriesNameMap = {
         "keile": "Keile im CT",
-        "rekalibriertkeile": "Keile im CT (Kalibriert)",
+        "rekalibriertkeile": "Keile im CT",
     }
 
     rowAccumulatedIntensitySeries1 = {
         "Ohne Cu-Filter": [],
-        "Ohne Cu-Filter (Kalibriert)": [],
         "Mit Cu-Filter": []
     }
 
     rowAccumulatedIntensitySeries2 = {
         "Ohne Cu-Filter": [],
-        "Ohne Cu-Filter (Kalibriert)": [],
         "Mit Cu-Filter": []
     }
 
@@ -196,11 +178,11 @@ def A63Analysis():
             rowAccumulatedIntensitySeries2["Mit Cu-Filter"].append(intensity_profile_roi2)
         else:
             if "rekalibriert" in dataset.series_name.lower():
-                rowAccumulatedIntensitySeries1["Ohne Cu-Filter (Kalibriert)"].append(intensity_profile_roi1)
-                rowAccumulatedIntensitySeries2["Ohne Cu-Filter (Kalibriert)"].append(intensity_profile_roi2)
-            else:
                 rowAccumulatedIntensitySeries1["Ohne Cu-Filter"].append(intensity_profile_roi1)
                 rowAccumulatedIntensitySeries2["Ohne Cu-Filter"].append(intensity_profile_roi2)
+            else:
+                # As instructed we ignore uncalibrated series for the accumulated profiles
+                pass
 
     # Remove extra padding around figure panels
     plt.subplots_adjust(left=0.03, right=0.98, top=0.94, bottom=0.06)
@@ -227,43 +209,64 @@ def A63Analysis():
     rois = [[1075, 1175], [1450, 1550]]
     all_series = [rowAccumulatedIntensitySeries1, rowAccumulatedIntensitySeries2]
 
+    # Wedge dimensions (a, b, h) in mm for V = 1/2 * a * b * h (triangular prism)
+    # Graphit: 50 mm x 50 mm base, height 10 mm
+    # Aluminium: 49.5 mm x 29.5 mm base, height 10 mm
+    wedge_dims_mm = np.array([
+        [50.0, 50.0, 10.0],
+        [49.5, 29.5, 10.0],
+    ])
+
     def exp_decay(x, a, b):
         return a * np.exp(-b * x)
 
-    def b_to_density_b(b, err_b, m, v):
-        # Massenschwächungskoeffizenten beta = b / rho
-        b_unit = b * u.cm**-1
-        err_b_unit = err_b * u.cm**-1
+    def b_to_density_b(b_fit, err_b_fit, m, a_dim, b_dim, h_dim):
+        """
+        Convert exponential attenuation parameter b to mass attenuation coefficient.
+        """
+        # Fit parameter (per thickness) has unit 1/cm
+        b_unit = b_fit * u.cm**-1
+        err_b_unit = err_b_fit * u.cm**-1
 
+        # Mass uncertainty (scale) as before
         err_m = 0.001 * u.g
-        err_v = np.sqrt(3) * v * (0.25 / 50) # Größtfehler Volumenmessung
 
-        rho = m / v  # g/cm^3
+        # Volume from explicit dimensions
+        V = (0.5 * a_dim * b_dim * h_dim).to(u.cm**3)
 
-        rho = rho.to(u.g / u.cm**3)
-        print(f"Density rho: {rho}")
+        # Volume uncertainty from side-length uncertainties
+        delta_L = 0.25 * u.mm  # absolute uncertainty per measured side
+        rel_u_V = np.sqrt(
+            (delta_L / a_dim) ** 2 +
+            (delta_L / b_dim) ** 2 +
+            (delta_L / h_dim) ** 2
+        )
+        err_V = (rel_u_V * V).to(u.cm**3)
 
-        # Größfehler
-        err_rho = err_m / v + err_v * m / (v**2)
+        rho = (m / V).to(u.g / u.cm**3)
+
+        # Density uncertainty (first-order propagation)
+        err_rho = (err_m / V + err_V * m / (V ** 2)).to(u.g / u.cm**3)
+
+        print(format_uncertainty(rho, err_rho))
 
         beta = (b_unit / rho).to(u.cm**2 / u.g)
 
-        # Fehlerfortpflanzung
-        err_beta = err_b_unit / rho + err_rho * b_unit / (rho**2)
+        # Uncertainty propagation for beta = b / rho
+        err_beta = (err_b_unit / rho + err_rho * b_unit / (rho ** 2)).to(u.cm**2 / u.g)
 
-        # Umrechnung von beta in Dichte
-        return beta.to(u.cm**2 / u.g), err_beta.to(u.cm**2 / u.g)
+        return beta, err_beta
 
     for i, series in enumerate(all_series):
         ax = axes[i]
 
         # Left is graphite, right is aluminum alloy
         mass = [20.178 * u.g, 21.410 * u.g][i]
-        volume = [1/2 * 50 * 50 * 10 * u.mm**3, 1/2 * 49.5 * 29.5 * 10 * u.mm**3][i]
+        a_dim, b_dim, h_dim = (wedge_dims_mm[i] * u.mm)
 
         roi = 790, 1900
         ax.set_title(f"1D-Intensitätsprofil ({names[i]})")
-        ax.set_xlabel("$y$ (cm)")
+        ax.set_xlabel("Relative Keildick (cm)")
         if i == 0:
             ax.set_ylabel("Relative Intensität")
 
@@ -284,6 +287,20 @@ def A63Analysis():
             voxelsize = 39.652 * 10**(-4) # in cm
             x_data = x_data * voxelsize
 
+            # Transform height values to thickness
+            # x_data currently: position along wedge height (cm), measured from start of ROI
+            H = 5.0  # cm (50 mm wedge height along detector direction)
+
+            if names[i] == "Graphit":
+                Dmax = 5.0  # cm (50 mm depth -> thickness range)
+            elif names[i] == "Aluminium":
+                Dmax = 2.5  # cm (25 mm depth -> thickness range)
+            else:
+                raise ValueError("Unknown material for thickness conversion")
+
+            # Convert height-coordinate to physical thickness in beam direction
+            x_data = (Dmax / H) * x_data
+
             y_data = accumulated_profile
 
             ax.plot(x_data, y_data, label=series_name, linewidth=1, color=series_colors.get(series_name, "black"))
@@ -294,14 +311,13 @@ def A63Analysis():
                 # Errors
                 perr = np.sqrt(np.diag(cov))
                 print(f"Fitting errors: {perr}")
-                beta, beta_err = b_to_density_b(popt[1], perr[1], mass, volume)
+                beta, beta_err = b_to_density_b(popt[1], perr[1], mass, a_dim, b_dim, h_dim)
                 label = f"{series_name} Exp-Fit $a e^{{-\\frac{{\\mu y}}{{\\rho}}}}$: $\\mu = {format_uncertainty(beta, beta_err)} \\ cm^2g^{{-1}}$"
                 fitted_curve = exp_decay(x_data, *popt)
                 ax.plot(x_data, fitted_curve, linestyle="--", label=label, linewidth=1, color=series_colors.get(series_name, "black"))
             except Exception as e:
                 print(f"Could not fit exponential decay for {series_name} ({names[i]})")
                 print(e)
-
 
         # Set x ticks style
         ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.2f}"))
@@ -310,7 +326,7 @@ def A63Analysis():
         ax.set_yticks([0.01, 0.1, 0.25, 0.5, 0.75, 1.0])
         ax.set_yticklabels(["0.01%", "10%", "25%", "50%", "75%", "100%"])
         ax.set_ylim(0.01, 1.0)
-        ax.set_xlim(left=0, right=4.6)
+        ax.set_xlim(left=0)
         ax.legend(fontsize="small")
 
     plt.tight_layout()
@@ -322,10 +338,10 @@ def A63Analysis():
     for i, series in enumerate(all_series):
         fig_single, ax_single = plt.subplots(1, 1, figsize=(8, 6))
         mass = [20.178 * u.g, 21.410 * u.g][i]
-        volume = [1/2 * 50 * 50 * 10 * u.mm**3, 1/2 * 49.5 * 29.5 * 10 * u.mm**3][i]
+        a_dim, b_dim, h_dim = (wedge_dims_mm[i] * u.mm)
 
         ax_single.set_title(f"1D-Intensitätsprofil ({names[i]})")
-        ax_single.set_xlabel("$y$ (cm)")
+        ax_single.set_xlabel("$Keildicke$ (cm)")
         if i == 0:
             ax_single.set_ylabel("Relative Intensität")
 
@@ -337,6 +353,20 @@ def A63Analysis():
             x_data = np.arange(accumulated_profile.size)
             voxelsize = 39.652 * 10**(-4) # in cm
             x_data = x_data * voxelsize
+
+            # Transform height values to thickness
+            # x_data currently: position along wedge height (cm), measured from start of ROI
+            H = 5.0  # cm (50 mm wedge height along detector direction)
+            if names[i] == "Graphit":
+                Dmax = 5.0  # cm (50 mm depth -> thickness range)
+            elif names[i] == "Aluminium":
+                Dmax = 2.5  # cm (25 mm depth -> thickness range)
+            else:
+                raise ValueError("Unknown material for thickness conversion")
+
+            # Convert height-coordinate to physical thickness in beam direction
+            x_data = (Dmax / H) * x_data
+
             y_data = accumulated_profile
 
             ax_single.plot(x_data, y_data, label=series_name, linewidth=1, color=series_colors.get(series_name, "black"))
@@ -344,7 +374,7 @@ def A63Analysis():
             try:
                 popt, cov = curve_fit(exp_decay, x_data, y_data, maxfev=10000)
                 perr = np.sqrt(np.diag(cov))
-                beta, beta_err = b_to_density_b(popt[1], perr[1], mass, volume)
+                beta, beta_err = b_to_density_b(popt[1], perr[1], mass, a_dim, b_dim, h_dim)
                 label = f"{series_name} Exp-Fit $a e^{{-\\frac{{\\mu y}}{{\\rho}}}}$: $\\mu = {format_uncertainty(beta, beta_err)} \\ cm^2g^{{-1}}$"
                 fitted_curve = exp_decay(x_data, *popt)
                 ax_single.plot(x_data, fitted_curve, linestyle="--", label=label, linewidth=1, color=series_colors.get(series_name, "black"))
@@ -357,7 +387,7 @@ def A63Analysis():
         ax_single.set_yticks([0.01, 0.1, 0.25, 0.5, 0.75, 1.0])
         ax_single.set_yticklabels(["0.01%", "10%", "25%", "50%", "75%", "100%"])
         ax_single.set_ylim(0.01, 1.0)
-        ax_single.set_xlim(left=0, right=4.6)
+        ax_single.set_xlim(left=0)
         ax_single.legend(fontsize="small")
 
         plt.tight_layout()
